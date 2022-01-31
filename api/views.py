@@ -3,7 +3,9 @@ from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.parsers import JSONParser
-from rest_framework.utils import json
+from django.db.models import Q
+from functools import reduce
+import operator
 
 from .forms import UploadDocForm, CreateTopicForm, CreateFolderForm
 from .models import Document, Topic, Folder
@@ -38,7 +40,7 @@ def listdocsview(request):
 def getdocview(request, name):
     if request.method == 'GET' or request.method == 'POST':
         print(f"doc name {name}")
-        documents = Document.objects.filter(name__icontains=name)[:10]
+        documents = Document.objects.filter(name__icontains=name)[:20]
         document_serializer = DocumentSerializer(documents, many=True)
         return JsonResponse(document_serializer.data, safe=False)
     else:
@@ -84,13 +86,17 @@ def createfolderview(request):
 @api_view(['GET'])
 def searchdocview(request):
     if request.method == 'GET':
-        for key, value in request.GET.items():
-            print(key)
-            print(value)
-
-
-    # if request.method == 'GET':
-    # documents = Document.objects.filter(name__icontains=name)[:10]
-    # document_serializer = DocumentSearchSerializer(documents, many=True)
-    # return JsonResponse(document_serializer.data, safe=False)
+        names = request.GET.getlist('name')
+        topics = request.GET.getlist('topic')
+        folders = request.GET.getlist('folder')
+        condition = []
+        if names:
+            condition.append(Q(reduce(operator.or_, (Q(name__icontains=name) for name in names))))
+        if topics:
+            condition.append(Q(topic__name__in=topics))
+        if folders:
+            condition.append(Q(folder__name__in=folders))
+        document = Document.objects.filter(reduce(operator.and_, (Q(condition) for condition in condition)))[:20]
+        document_search_serializer = DocumentSearchSerializer(document, many=True)
+        return JsonResponse(document_search_serializer.data, safe=False)
     return JsonResponse({'message': '{} No data found'}, status=status.HTTP_204_NO_CONTENT)
